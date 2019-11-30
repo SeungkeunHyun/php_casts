@@ -1,0 +1,175 @@
+<?php
+	ini_set('upload_max_filesize', '200M');
+	ini_set('post_max_size', '200M');
+	ini_set('memory_limit', '-1');
+	//ini_set('mbstring.http_input', 'pass');
+	//ini_set('mbstring.http_output', 'pass');
+	/*
+	mb_internal_encoding('UTF-8');
+	mb_http_output('UTF-8');
+	mb_http_input('UTF-8');
+	mb_language('uni');
+	mb_regex_encoding('UTF-8');
+	ob_start('mb_output_handler');
+	*/
+	header('Content-Type:text/html; charset=UTF-8');
+	set_time_limit(180);
+
+	function download_remotefile($surl, $sfname) {
+		$current = file_get_contents($surl);
+		file_put_contents($sfname, $current);
+	}
+	function remote_file_size($url){
+		# Get all header information
+		$data = get_headers($url, true);
+		# Look up validity
+		if (isset($data['Content-Length']))
+			# Return file size
+			return (int) $data['Content-Length'];
+	}
+
+	function download_file($url, $path) {
+		ini_set('user_agent','Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36');
+		ob_flush();
+		$newfilename = $path;
+		$file = fopen ($url, "r");
+		if ($file) {
+		$newfile = fopen($newfilename, "w+b");
+			if ($newfile)
+				while(!feof($file)) {
+				  fwrite($newfile, fread($file, 1024 * 8 ), 1024 * 8 );
+				}
+		}
+		if ($file) {
+			fclose($file);
+		}
+		if ($newfile) {
+			fclose($newfile);
+		}
+	}
+
+	 function stream_copy($src, $dest)
+    {
+        $fsrc = fopen($src,'r');
+        $fdest = fopen($dest,'w+b');
+        $len = stream_copy_to_stream($fsrc,$fdest);
+        fclose($fsrc);
+        fclose($fdest);
+        return $len;
+    }
+	
+	function writeLog($msg) {
+		file_put_contents('php://stderr', $msg."\n");
+	}
+
+	ini_set("display_errors", 1);
+	error_reporting(-1);
+	$root = realpath(dirname(__FILE__));
+	if(DIRECTORY_SEPARATOR == "/") {
+		require_once($root."/getid3/getid3.php");
+		require_once($root."/getid3/write.php");
+	} else {
+		require_once($root."\\getid3\\getid3.php");
+		require_once($root."\\getid3\\write.php");
+	}
+
+
+	$itunesURL = "http://www.itunes.com/dtds/podcast-1.0.dtd";
+	$rmtFile = $_REQUEST["lnk"];
+	$imgUrl = $_REQUEST["img"];
+	$artist = $_REQUEST["artist"];
+
+	$rmtPath = preg_replace("/[?].+$/", "", $rmtFile);
+	$tmpDir = $root.DIRECTORY_SEPARATOR."temp";
+
+	foreach (glob($tmpDir.DIRECTORY_SEPARATOR."*.{mp3,tmp}", GLOB_BRACE) as $file) {
+		if (filemtime($file) < time() - 600) {
+			unlink($file);
+		}
+	}
+
+	$partsURL = pathinfo($rmtPath);
+
+	if($partsURL["filename"] == "download") {
+		$fname = $_REQUEST["title"];
+		$fname .= ".".$partsURL["extension"];
+	} else {
+		$fname = $partsURL["basename"]; //.".".$partsURL["extension"];
+	}
+	$lclFile = $tmpDir.DIRECTORY_SEPARATOR.$fname;
+	//print_r($partsURL);
+	$imgFile = explode("/", $imgUrl);
+	$imgFile = $tmpDir.DIRECTORY_SEPARATOR.$imgFile[count($imgFile) - 1];
+	if(!file_exists($imgFile)) {
+		$fh = fopen($imgFile, "wb+");
+		$imgBytes = file_get_contents($imgUrl);
+		fwrite($fh, $imgBytes);
+	} else {
+		$imgBytes = file_get_contents($imgFile);
+	}
+
+
+	stream_copy($rmtFile, $lclFile);
+	$gid3 = new getID3;
+	$gid3->setOption(array('encoding'=>'UTF-8'));
+	//$gid3->tag_encoding = 'UTF-8';
+	$finfo = $gid3->analyze($lclFile);
+	
+	if(!isset($finfo["title"])) {
+		$finfo['title'] = array($_REQUEST["title"]); //iconv("UTF-8", "EUC-KR", $_REQUEST["title"]);
+	}
+	if(!isset($finfo["artist"])) {
+		$finfo['artist'] = array($_REQUEST["artist"]); //iconv("UTF-8", "EUC-KR", $_REQUEST["artist"]);
+	}
+	if(!isset($finfo["album"])) {
+		$finfo["album"] = array($_REQUEST["ttl"]); //iconv("UTF-8", "EUC-KR", $_REQUEST["ttl"]);
+	}
+	
+	$finfo['unsynchronised_lyrics'][0] = $_REQUEST["summary"]; //mb_convert_encoding($_REQUEST["summary"], "UTF-8", "auto");
+	$finfo += array("attached_picture" => array(0 => array(
+				"picturetypeid" => 2,
+				"picturetype" => "Cover (front)",
+				"description" => "cover",
+				"mime" => "image/jpeg",
+				"data" => $imgBytes,
+				"encoding" => "utf-8",
+				"datalength" => count($imgBytes))
+			));
+	$id3Writer = new getid3_writetags;
+	$id3Writer->tag_encding = "UTF-8";
+	$id3Writer->filename = $lclFile;
+	$id3Writer->tagformats = array("id3v2.3");
+	$id3Writer->overwrite_tags = true;
+	$id3Writer->remove_other_tags = false;
+	$id3Writer->tag_data = $finfo;
+	
+	if($id3Writer->WriteTags()) {
+		writeLog($lclFile."\n".print_r($id3Writer->warnings, true));
+		$getID3 = new getID3;
+		writeLog(print_r($getID3->analyze($lclFile), true)); 
+		//rename($lclFile, str_replace(DIRECTORY_SEPARATOR."#", DIRECTORY_SEPARATOR, $lclFile));
+		//$lclFile = str_replace(DIRECTORY_SEPARATOR."#", DIRECTORY_SEPARATOR, $lclFile);
+		$filesize = filesize($lclFile);
+		$partsURL = pathinfo($lclFile);
+		$fname = $partsURL["basename"]; //.".".$partsURL["extension"];
+		$dnFname = $filename = $fname; //iconv("UTF-8", "EUC-KR", $fname);
+		writeLog("File to download: $dnFname");
+		header('Content-Description: File Transfer');
+		header("Expires: 0");
+		header("Content-Type: application/octet-stream");
+		//header('Content-Type: application/vnd.android.package-archive');
+		header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+		header("Content-Disposition: attachment; filename=\"".$dnFname."\"");
+		header("Pragma: public");
+		header("Content-Transfer-Encoding: binary");
+		header("Content-Length: $filesize");
+
+		ob_clean();
+		flush();
+
+		ignore_user_abort(true);
+		readfile($lclFile); //, false, $context);
+	} else {
+		writeLog("Failed to set ID3 data");
+	}
+?>
