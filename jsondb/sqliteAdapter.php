@@ -27,10 +27,13 @@
 			} else {
 				$qry = "select episode from ".$tab." where cast_id = '".$paths[1]."'";
 				$res = $db->query($qry);
+				$results = [];
 				while($row = $res->fetchArray()) {
 					$results[] = json_decode($row['episode']);
 				}
-				echo json_encode($results, JSON_UNESCAPED_UNICODE);
+				if(count($results) > 0) {
+					echo json_encode($results, JSON_UNESCAPED_UNICODE);
+				}
 			}
 		break;
 		case "PUT":
@@ -46,6 +49,9 @@
 		case "POST":
 			$req = json_decode($reqJSON, true);
 			print_r($req);
+			$mutex = new ExclusiveLock("Sqlite lock");
+			if( $mutex->lock( ) == FALSE )
+    			error("Locking failed");
 			foreach($req['episodes'] as $row) {
 				$md5key = md5($row['mediaURI']);
 				$db->exec("DELETE FROM ".$tab." WHERE key_md5 = '".$md5key."'");
@@ -55,6 +61,7 @@
 				$stmt->bindValue(3, json_encode($row, JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
 				$stmt->execute();
 			}
+			$mutex->unlock();
 			http_response_code(200);
 		break;
 	}
