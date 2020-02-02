@@ -3,6 +3,8 @@
 ini_set('upload_max_filesize', '200M');
 ini_set('post_max_size', '250M');
 ini_set('memory_limit', '-1');
+error_reporting(E_ALL ^ E_DEPRECATED);
+set_time_limit(0);
 //ini_set('mbstring.http_input', 'pass');
 //ini_set('mbstring.http_output', 'pass');
 $root = realpath(dirname(__FILE__));
@@ -11,27 +13,28 @@ function download_remotefile($surl, $sfname) {
     // read the file from remote location
     $timeout = 0;
     $ch = curl_init();
+	curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
     curl_setopt($ch, CURLOPT_HEADER, 0);
     curl_setopt($ch, CURLOPT_BINARYTRANSFER, 1);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+	curl_setopt($ch, CURLOPT_BUFFERSIZE, 12000);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); //Set curl to return the data instead of printing it to the browser.
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
-    /**
-    * Set the URL of the page or file to download.
-    */
+	curl_setopt($ch, CURLOPT_ENCODING,  '');
     curl_setopt($ch, CURLOPT_URL, $surl);
 
-    $fp = fopen($sfname, 'w+');
-    /**
-    * Ask cURL to write the contents to a file
-    */
+    $fp = fopen($sfname, 'wb');
     curl_setopt($ch, CURLOPT_FILE, $fp);
 
-    curl_exec ($ch);
+    curl_exec($ch);
 
-    curl_close ($ch);
+    curl_close($ch);
     fclose($fp);
+} 
+
+function download_url($surl, $sfname) {
+	file_put_contents($sfname, fopen($surl, 'r'));
 }
 
 function getFileNameFromPath($path) {
@@ -61,7 +64,8 @@ $rmtFile = $_REQUEST["lnk"];
 $fname = getFileNameFromPath($rmtFile);
 $lclFile = $tmpDir.DIRECTORY_SEPARATOR.$fname;
 if(!file_exists($lclFile)) {
-    download_remotefile($rmtFile, $lclFile);
+    //download_remotefile($rmtFile, $lclFile);
+	download_remotefile($rmtFile, $lclFile);
 }
 
 

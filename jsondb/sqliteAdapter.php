@@ -40,7 +40,7 @@
 			}
 		break;
 		case "PUT":
-			if($id === null) {
+			if($id === null && $tab === 'casts') {
 				$db->exec('DELETE FROM '.$tab);
 				$stmt = $db->prepare('INSERT INTO '.$tab." VALUES(?)");
 				$stmt->bindValue(1, $reqJSON, SQLITE3_TEXT);
